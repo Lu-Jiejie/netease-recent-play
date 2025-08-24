@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import crypto from 'node:crypto'
 import path from 'node:path'
-import ejs from 'ejs'
 import axios from 'axios'
 import { CONSTANTS, renderError } from '../utils/index.js'
 
@@ -34,31 +33,14 @@ const templateColorVariants = {
 
 export default async (req, res) => {
   try {
-    let {
-      id,
-      type = '1',
-      number = '5',
-      width = '280',
-      size = '800',
-      column = '1',
-      mode = 'dark',
-      theme = 'list',
-      themeColor = '53b14f',
-      show_percent = '0',
-      show_bar = '1',
-      show_rainbow = '0',
-      show_random = '0',
-      title = theme === 'list' ? 'Recently Played' : theme === 'card' ? 'Recently played on' : '',
-      cache = CONSTANTS.CACHE_FOUR_HOURS,
-    } = req.query
-
+    const { id, limit = 5, cache = CONSTANTS.CACHE_FOUR_HOURS } = req.query
     if (!id) throw new Error('Id is required')
 
     const {
       data: { allData, weekData },
     } = await axios.post(
       'https://music.163.com/weapi/v1/play/record?csrf_token=',
-      aesRsaEncrypt(JSON.stringify({ uid: id, type })),
+      aesRsaEncrypt(JSON.stringify({ uid: id, type: '1' })),
       {
         headers: {
           Accept: '*/*',
@@ -74,54 +56,16 @@ export default async (req, res) => {
       }
     )
 
-    const randomIndex = Math.floor(
-      Math.random() * Math.min((weekData ?? allData).length, parseInt(number))
-    )
+    const songs = (weekData ?? allData).slice(0, parseInt(limit))
 
-    const songs = (weekData ?? allData).slice(
-      theme === 'card' && show_random === '1' ? randomIndex : 0,
-      theme === 'list'
-        ? parseInt(number)
-        : theme === 'card' && show_random === '1'
-        ? randomIndex + 1
-        : 1
-    )
+    const result = songs.map(({ song, playTime }) => ({
+      name: song.name,
+      artist: song.ar.map(({ name }) => name).join('/'),
+      album: song.al.name,
+      time: playTime,
+      url: `https://music.163.com/#/song?id=${song.id}`,
+    }))
 
-    if (!songs.length) title = 'Not Played Recently'
-
-    const covers = await Promise.all(
-      songs.map(async ({ song }) => {
-        const buffer = await axios.get(
-          `${song.al.picUrl}${size !== '800' ? `?param=${size}x${size}` : ''}`,
-          {
-            responseType: 'arraybuffer',
-          }
-        )
-        return `data:image/jpg;base64,${Buffer.from(buffer.data, 'binary').toString('base64')}`
-      })
-    )
-
-    const templateParams = {
-      recentPlayedList: songs.map(({ song, score }, i) => {
-        return {
-          name: song.name,
-          artist: song.ar.map(({ name }) => name).join('/'),
-          cover: covers[i],
-          url: `https://music.163.com/#/song?id=${song.id}`,
-          percent: show_percent === '1' ? score / 100 : 0,
-        }
-      }),
-      themeConfig: {
-        title,
-        width: parseInt(width),
-        column: parseInt(column),
-        mode,
-        show_bar,
-        show_rainbow,
-        themeColor,
-        color: templateColorVariants[theme][mode] ?? {},
-      },
-    }
     res.setHeader(
       'Cache-Control',
       `public, max-age=${Math.max(
@@ -129,11 +73,12 @@ export default async (req, res) => {
         Math.min(parseInt(cache), CONSTANTS.CACHE_ONE_DAY)
       )}`
     )
-    res.setHeader('content-type', 'image/svg+xml')
+    res.setHeader('content-type', 'application/json')
     res.statusCode = 200
-    res.send(ejs.render(readTemplateFile(theme), templateParams))
+    res.json({ recentPlayed: result })
   } catch (err) {
-    res.setHeader('Cache-Control', `no-cache, no-store, must-revalidate`)
-    return res.send(renderError(err.message, err.secondaryMessage))
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+    res.statusCode = 400
+    res.json({ error: err.message })
   }
 }
