@@ -1,5 +1,5 @@
 {
-  "name": "netease-recent-profile",
+  "name": "netease-recent-play",
   "version": "1.0.0",
   "description": "Generates a beautiful Netease Cloud Music status for github profiles",
   "type": "module",
@@ -22,7 +22,6 @@
     "vercel",
     "card-generator"
   ],
-  "author": "zonemeen <miqilin18@gmail.com>",
   "license": "MIT",
   "devDependencies": {
     "husky": "^8.0.2",
