@@ -1,0 +1,4 @@
+ignoredBuiltDependencies:
+  - deasync
+  - esbuild
+  - vercel
